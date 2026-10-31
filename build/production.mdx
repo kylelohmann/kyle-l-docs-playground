@@ -1,0 +1,80 @@
+---
+title: "Production checklist"
+description: "What the demo fakes, and what you need to build before real golfers and customers use it."
+icon: "list-check"
+---
+
+The demo shows the shape of the product: endpoints, payloads, and comparison logic. Everything beneath that is a stand-in. This page lists each stand-in and what replaces it.
+
+## Data source
+
+| Demo | Production |
+| --- | --- |
+| Three generated players with 24 rounds each, built at startup | Rounds and shots from Arccos, stored in a database |
+| Hand-written cohort averages | Cohort averages computed from real player data |
+
+{/* TODO: Confirm how real Arccos data would be accessed (data partnership, export, or an internal service). The demo assumes nothing about this. */}
+
+Before you write code, confirm how you'll get Arccos data and what the terms allow you to show third parties. Everything else on this page depends on that answer.
+
+## Player authorization
+
+In the demo, any valid API key can read every player. In production, a player must approve each app before it can read their data.
+
+- Add an OAuth 2.0 authorization code flow. The player signs in to Arccos, approves your app, and your app receives a token scoped to that player.
+- Scope each request to the players who authorized the calling app. Return `404`, not `403`, for other players, so you don't reveal who exists.
+- Let players revoke access, and send an event so apps can delete cached data.
+
+## Cohort statistics
+
+- Compute cohorts in a scheduled job, for example nightly, and store the results. Don't compute them on each request.
+- Set a minimum cohort size before you publish a cohort. Small cohorts are noisy and can expose individual players.
+- Replace the normal-distribution percentile estimate with real percentiles from each cohort's distribution.
+- Version the cohorts, for example with a `computed_at` field, so apps can show "Based on data through October 2026."
+- Decide how players enter a cohort: current handicap index, or handicap at the time of each round.
+
+## Storage
+
+| Data | Demo | Production |
+| --- | --- | --- |
+| Players and rounds | In-memory `Map` | Relational database |
+| Webhook subscriptions | In-memory, lost on restart | Database table |
+| Rate limit counters | In-memory, per process | Shared store such as Redis |
+| API keys | Environment variable | Database, with hashed keys |
+
+## Webhooks
+
+- Deliver from a queue, not inside the request that caused the event.
+- Retry failed deliveries with exponential backoff, and disable endpoints that fail for days.
+- Let customers rotate secrets, and accept both the old and new secret during the switch.
+- Allow only `https` URLs, and block private IP ranges to prevent server-side request forgery.
+- Remove or protect the `/v1/sandbox` routes. Only test keys should reach them.
+
+## API keys and limits
+
+- Issue separate test and live keys, such as `sk_test_` and `sk_live_`. Test keys read sandbox data only.
+- Store only a hash of each key, and show the full key once when it's created.
+- Set rate limits per plan, and document them in [Errors and limits](/guides/errors).
+
+## Privacy
+
+Golf data is personal data. It includes where and when someone played.
+
+- Publish what you collect, why, and how long you keep it.
+- Support data export and deletion requests.
+- Don't expose exact course locations or tee times in benchmark data.
+
+## Operations
+
+- Version the API in the path (`/v1`) and announce breaking changes ahead of time in a changelog.
+- Add request logging with a request ID in each response, so customers can report problems.
+- Add monitoring and alerts for error rates, latency, and webhook failures.
+
+## Documentation
+
+When you deploy the API, update the docs to match:
+
+1. Change `servers` in `openapi.yaml` to the production URL. In `docs.json`, set `api.playground.proxy` to `true`, or remove that setting. The demo turns the proxy off so the playground can reach `localhost`.
+2. Replace the demo key in [Authentication](/guides/authentication) with instructions for getting a key.
+3. Remove the demo warnings from [Introduction](/) and [Core concepts](/concepts).
+4. Add a changelog page for API changes.

@@ -18,8 +18,10 @@
 
 ## Terminology
 
-{/* Add product-specific terms and preferred usage */}
-{/* Example: Use "workspace" not "project", "member" not "user" */}
+- "Player" for a golfer whose data the API returns; "customer" or "app" for the developer calling the API
+- "Cohort" (not "tier" or "bracket") for a benchmark group; "Tour elite" for the top cohort
+- "Strokes gained", lowercase in prose; category names: off the tee, approach, around the green, putting
+- "Handicap index", not "handicap", when referring to the `handicap_index` field
 
 ## Style preferences
 
@@ -33,5 +35,6 @@
 
 ## Content boundaries
 
-{/* Define what should and shouldn't be documented */}
-{/* Example: Don't document internal admin features */}
+- The API in `app/` is a demo with generated data. Don't present it as an official Arccos API or cite its numbers as real statistics.
+- Don't name real tour players or attribute stats to them.
+- Endpoint details come from `openapi.yaml`. Update it in the same change as any route in `app/src/server.js`.

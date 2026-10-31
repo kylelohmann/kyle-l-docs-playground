@@ -1,0 +1,74 @@
+---
+title: "Track strokes gained over time"
+description: "Chart a golfer's strokes gained round by round against any baseline."
+icon: "chart-line"
+---
+
+[Get strokes gained](/api-reference/performance/get-strokes-gained) returns strokes gained for a window of rounds. You get both the window average and one entry per round, so you can draw a trend line.
+
+## Request strokes gained
+
+Pass a `baseline` cohort and a `window`:
+
+```bash
+curl "http://localhost:4000/v1/players/plr_alex_rivera/strokes-gained?baseline=hcp_10&window=last_5" \
+  -H "Authorization: Bearer $ARCCOS_API_KEY"
+```
+
+```json
+{
+  "player_id": "plr_alex_rivera",
+  "window": "last_5",
+  "baseline": "hcp_10",
+  "average": {
+    "off_the_tee": -0.75,
+    "approach": -0.82,
+    "around_the_green": -0.56,
+    "putting": -0.08,
+    "total": -2.2
+  },
+  "rounds": [
+    {
+      "round_id": "rnd_alex_rivera_020",
+      "played_at": "2026-10-01T00:00:00.000Z",
+      "off_the_tee": 0.12,
+      "approach": -0.46,
+      "around_the_green": -0.31,
+      "putting": -0.36,
+      "total": -1
+    }
+  ]
+}
+```
+
+`rounds` is ordered oldest first, so you can plot it without sorting.
+
+## Pick a baseline
+
+The baseline changes what zero means on your chart:
+
+| Baseline | Zero means | Good for |
+| --- | --- | --- |
+| `scratch` (default) | Playing to scratch | A stable reference that doesn't move as the player improves |
+| The player's own cohort | Playing to their handicap | Spotting good and bad rounds |
+| `tour_elite` | Tour-level play | Showing the gap to the top of the game |
+
+<Tip>
+  Use the same baseline for every round in a chart. Switching baselines shifts the whole line, which can look like a sudden improvement or slump.
+</Tip>
+
+## Smooth the trend
+
+Single rounds are noisy. A round with three penalty strokes swings off-the-tee strokes gained by several strokes. Show a rolling average next to the raw values:
+
+```javascript
+function rollingAverage(rounds, category, size = 5) {
+  return rounds.map((_, i) => {
+    const slice = rounds.slice(Math.max(0, i - size + 1), i + 1);
+    const avg = slice.reduce((sum, r) => sum + r[category], 0) / slice.length;
+    return Math.round(avg * 100) / 100;
+  });
+}
+```
+
+Request `window=all` to have enough rounds for the average to settle.

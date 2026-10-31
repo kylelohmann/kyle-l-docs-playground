@@ -1,0 +1,91 @@
+---
+title: "Errors, rate limits, and pagination"
+sidebarTitle: "Errors and limits"
+description: "Handle error responses, stay within rate limits, and page through rounds."
+icon: "triangle-exclamation"
+---
+
+## Error format
+
+Every error returns a JSON body with a stable `code`:
+
+```json
+{
+  "error": {
+    "code": "invalid_parameter",
+    "message": "cohort must be one of: tour_elite, scratch, hcp_5, hcp_10, hcp_15, hcp_20.",
+    "param": "cohort"
+  }
+}
+```
+
+Branch on `code`, not `message`. Messages are for people and can change. `param` names the parameter at fault, when there is one.
+
+| Status | Code | What to do |
+| --- | --- | --- |
+| `400` | `invalid_parameter` | Fix the parameter named in `param` |
+| `400` | `invalid_json` | Send a valid JSON body |
+| `401` | `missing_api_key` | Add the `Authorization` header |
+| `401` | `invalid_api_key` | Check the key |
+| `404` | `resource_not_found` | Check the ID. The player may have disconnected. |
+| `404` | `route_not_found` | Check the method and path |
+| `405` | `method_not_allowed` | Use a supported method for this path |
+| `429` | `rate_limited` | Wait `Retry-After` seconds, then retry |
+| `500` | `internal_error` | Retry with backoff |
+
+## Rate limits
+
+Each API key can make 120 requests per minute. Every response includes these headers:
+
+| Header | Meaning |
+| --- | --- |
+| `X-RateLimit-Limit` | Requests allowed per minute |
+| `X-RateLimit-Remaining` | Requests left in the current minute |
+| `X-RateLimit-Reset` | Unix time when the window resets |
+| `Retry-After` | Seconds to wait. Only sent with a `429`. |
+
+To avoid hitting the limit, cache comparisons and refresh them from [webhooks](/guides/webhooks) instead of polling.
+
+```javascript
+async function getWithRetry(url, options, attempts = 3) {
+  for (let i = 0; i < attempts; i++) {
+    const res = await fetch(url, options);
+    if (res.status !== 429 && res.status < 500) return res;
+    const wait = Number(res.headers.get('Retry-After')) || 2 ** i;
+    await new Promise((resolve) => setTimeout(resolve, wait * 1000));
+  }
+  throw new Error(`Gave up on ${url} after ${attempts} attempts`);
+}
+```
+
+<Tip>
+  To test rate limiting locally, start the server with a low limit: `RATE_LIMIT_PER_MINUTE=5 npm start`.
+</Tip>
+
+## Pagination
+
+[List rounds](/api-reference/rounds/list-rounds) returns rounds newest first, a page at a time. Set the page size with `limit`, from 1 to 50. The default is 10.
+
+Each page includes `has_more` and `next_cursor`. To get the next page, pass `next_cursor` as `starting_after`:
+
+```bash
+curl "http://localhost:4000/v1/players/plr_alex_rivera/rounds?limit=10&starting_after=rnd_alex_rivera_015" \
+  -H "Authorization: Bearer $ARCCOS_API_KEY"
+```
+
+To fetch every round:
+
+```javascript
+async function allRounds(playerId) {
+  const rounds = [];
+  let cursor = null;
+  do {
+    const params = new URLSearchParams({ limit: '50', ...(cursor && { starting_after: cursor }) });
+    const res = await fetch(`${BASE_URL}/v1/players/${playerId}/rounds?${params}`, { headers });
+    const page = await res.json();
+    rounds.push(...page.data);
+    cursor = page.next_cursor;
+  } while (cursor);
+  return rounds;
+}
+```

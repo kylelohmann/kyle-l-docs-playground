@@ -1,0 +1,15 @@
+{
+  "name": "arccos-benchmarks-demo-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Demo API for comparing a golfer's Arccos stats with benchmark cohorts. Uses generated sample data.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test"
+  }
+}
