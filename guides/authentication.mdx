@@ -1,0 +1,37 @@
+---
+title: "Authentication"
+description: "Authenticate requests with an API key."
+icon: "key"
+---
+
+Every endpoint except `GET /health` needs an API key. Send it as a bearer token in the `Authorization` header:
+
+```bash
+curl http://localhost:4000/v1/players \
+  -H "Authorization: Bearer sk_test_demo_123"
+```
+
+## Demo keys
+
+The demo server accepts `sk_test_demo_123` by default. To use your own keys, set `ARCCOS_API_KEYS` to a comma-separated list before you start the server:
+
+```bash
+ARCCOS_API_KEYS=sk_test_alpha,sk_test_beta npm start
+```
+
+## Keep keys secret
+
+- Call the API from your server, not from a browser or mobile app, where anyone can read the key.
+- Load keys from environment variables or a secrets manager. Don't commit them.
+- Use a different key for each environment.
+
+## Errors
+
+| Status | Code | Cause |
+| --- | --- | --- |
+| `401` | `missing_api_key` | No `Authorization` header, or it doesn't start with `Bearer` |
+| `401` | `invalid_api_key` | The key isn't recognized |
+
+<Note>
+  In the demo, any valid key can read every player. A production API should scope each key to the players who authorized that app. See [Production checklist](/build/production#player-authorization).
+</Note>

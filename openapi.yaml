@@ -1,0 +1,1021 @@
+openapi: 3.1.0
+info:
+  title: Arccos Benchmarks API (demo)
+  version: 0.1.0
+  description: >-
+    Read a golfer's Arccos rounds and stats, and compare them with benchmark cohorts
+    from tour-level players down to 20 handicaps. This is a demo API that serves
+    generated sample data.
+servers:
+  - url: http://localhost:4000
+    description: Local demo server (`npm start` in the `app` folder)
+security:
+  - bearerAuth: []
+tags:
+  - name: Players
+    description: Golfers who have connected their Arccos account to your app.
+  - name: Rounds
+    description: Completed rounds with hole-by-hole detail.
+  - name: Performance
+    description: Aggregated stats, strokes gained, and cohort comparisons for a player.
+  - name: Benchmarks
+    description: Reference statistics for each skill cohort.
+  - name: Webhooks
+    description: Subscribe to events instead of polling.
+  - name: Sandbox
+    description: Test helpers that only exist on the demo server.
+paths:
+  /v1/players:
+    get:
+      tags: [Players]
+      operationId: listPlayers
+      summary: List players
+      description: Returns every player who has connected their Arccos account to your API key.
+      responses:
+        '200':
+          description: The connected players.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Player'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /v1/players/{playerId}:
+    get:
+      tags: [Players]
+      operationId: getPlayer
+      summary: Get a player
+      parameters:
+        - $ref: '#/components/parameters/PlayerId'
+      responses:
+        '200':
+          description: The player.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Player'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/players/{playerId}/rounds:
+    get:
+      tags: [Rounds]
+      operationId: listRounds
+      summary: List rounds
+      description: >-
+        Returns a player's rounds, newest first, without hole-by-hole detail. Pass
+        `next_cursor` from one page as `starting_after` to fetch the next page.
+      parameters:
+        - $ref: '#/components/parameters/PlayerId'
+        - name: limit
+          in: query
+          description: Number of rounds to return.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+        - name: starting_after
+          in: query
+          description: A round ID from a previous page. Returns rounds played before it.
+          schema:
+            type: string
+            example: rnd_alex_rivera_023
+      responses:
+        '200':
+          description: A page of rounds.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, has_more, next_cursor]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RoundSummary'
+                  has_more:
+                    type: boolean
+                    description: Whether more rounds exist after this page.
+                  next_cursor:
+                    type: [string, 'null']
+                    description: Pass as `starting_after` to get the next page. `null` on the last page.
+                    example: rnd_alex_rivera_023
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/rounds/{roundId}:
+    get:
+      tags: [Rounds]
+      operationId: getRound
+      summary: Get a round
+      description: Returns a round with hole-by-hole detail.
+      parameters:
+        - name: roundId
+          in: path
+          required: true
+          description: The round ID.
+          schema:
+            type: string
+            example: rnd_alex_rivera_024
+      responses:
+        '200':
+          description: The round.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Round'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/players/{playerId}/stats:
+    get:
+      tags: [Performance]
+      operationId: getPlayerStats
+      summary: Get player stats
+      description: Averages a player's rounds over a window into scoring, driving, approach, short game, and putting stats.
+      parameters:
+        - $ref: '#/components/parameters/PlayerId'
+        - $ref: '#/components/parameters/Window'
+      responses:
+        '200':
+          description: The player's aggregated stats.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [player_id, window, rounds_included, stats, strokes_gained]
+                properties:
+                  player_id:
+                    type: string
+                    example: plr_alex_rivera
+                  window:
+                    $ref: '#/components/schemas/Window'
+                  rounds_included:
+                    type: integer
+                    example: 10
+                  stats:
+                    $ref: '#/components/schemas/Stats'
+                  strokes_gained:
+                    $ref: '#/components/schemas/StrokesGained'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/players/{playerId}/strokes-gained:
+    get:
+      tags: [Performance]
+      operationId: getStrokesGained
+      summary: Get strokes gained
+      description: >-
+        Returns strokes gained per category against a baseline cohort, as a window
+        average and round by round. A positive number means the player beat the baseline.
+      parameters:
+        - $ref: '#/components/parameters/PlayerId'
+        - $ref: '#/components/parameters/Window'
+        - name: baseline
+          in: query
+          description: The cohort to measure against.
+          schema:
+            $ref: '#/components/schemas/CohortId'
+            default: scratch
+      responses:
+        '200':
+          description: Strokes gained against the baseline.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [player_id, window, baseline, average, rounds]
+                properties:
+                  player_id:
+                    type: string
+                    example: plr_alex_rivera
+                  window:
+                    $ref: '#/components/schemas/Window'
+                  baseline:
+                    $ref: '#/components/schemas/CohortId'
+                  average:
+                    $ref: '#/components/schemas/StrokesGained'
+                  rounds:
+                    type: array
+                    description: One entry per round in the window, oldest first.
+                    items:
+                      allOf:
+                        - type: object
+                          required: [round_id, played_at]
+                          properties:
+                            round_id:
+                              type: string
+                              example: rnd_alex_rivera_024
+                            played_at:
+                              type: string
+                              format: date-time
+                        - $ref: '#/components/schemas/StrokesGained'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/players/{playerId}/compare:
+    get:
+      tags: [Performance]
+      operationId: comparePlayer
+      summary: Compare a player with a cohort
+      description: >-
+        Compares a player's stats and strokes gained with a benchmark cohort. Returns
+        the gap and cohort percentile for each stat, strokes gained gaps sorted from
+        worst to best, and plain-language insights.
+      parameters:
+        - $ref: '#/components/parameters/PlayerId'
+        - $ref: '#/components/parameters/Window'
+        - name: cohort
+          in: query
+          description: The cohort to compare with.
+          schema:
+            $ref: '#/components/schemas/CohortId'
+            default: tour_elite
+      responses:
+        '200':
+          description: The comparison.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comparison'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/players/{playerId}/clubs:
+    get:
+      tags: [Performance]
+      operationId: getClubDistances
+      summary: Get club distances
+      description: >-
+        Returns the player's average carry distance per club over their last 20 rounds.
+        Pass `cohort` to include the cohort's average carry and the gap for each club.
+      parameters:
+        - $ref: '#/components/parameters/PlayerId'
+        - name: cohort
+          in: query
+          description: Optional cohort to compare distances with.
+          schema:
+            $ref: '#/components/schemas/CohortId'
+      responses:
+        '200':
+          description: Carry distance per club.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [player_id, cohort, data]
+                properties:
+                  player_id:
+                    type: string
+                    example: plr_alex_rivera
+                  cohort:
+                    oneOf:
+                      - $ref: '#/components/schemas/CohortId'
+                      - type: 'null'
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ClubDistance'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/benchmarks:
+    get:
+      tags: [Benchmarks]
+      operationId: listBenchmarks
+      summary: List benchmark cohorts
+      responses:
+        '200':
+          description: Every benchmark cohort, best to worst.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Cohort'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/benchmarks/{cohortId}:
+    get:
+      tags: [Benchmarks]
+      operationId: getBenchmark
+      summary: Get a benchmark cohort
+      parameters:
+        - name: cohortId
+          in: path
+          required: true
+          description: The cohort ID.
+          schema:
+            $ref: '#/components/schemas/CohortId'
+      responses:
+        '200':
+          description: The cohort.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cohort'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/webhooks:
+    get:
+      tags: [Webhooks]
+      operationId: listWebhooks
+      summary: List webhooks
+      responses:
+        '200':
+          description: Your webhook subscriptions. Secrets are not included.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Webhook'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Webhooks]
+      operationId: createWebhook
+      summary: Create a webhook
+      description: >-
+        Subscribes a URL to events. The response includes the signing `secret`. This
+        is the only time the API returns it, so store it securely.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url:
+                  type: string
+                  format: uri
+                  description: The HTTP or HTTPS URL that receives events.
+                  example: https://example.com/webhooks/arccos
+                events:
+                  type: array
+                  description: Events to send. Defaults to every event type.
+                  items:
+                    $ref: '#/components/schemas/EventType'
+      responses:
+        '201':
+          description: The new subscription, including its signing secret.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Webhook'
+                  - type: object
+                    required: [secret]
+                    properties:
+                      secret:
+                        type: string
+                        description: Use this to verify the `Arccos-Signature` header.
+                        example: whsec_3f9a1c0d2b7e4a56c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/webhooks/{webhookId}:
+    parameters:
+      - name: webhookId
+        in: path
+        required: true
+        description: The webhook ID.
+        schema:
+          type: string
+          example: wh_8c1f2a9b3d4e5f60
+    get:
+      tags: [Webhooks]
+      operationId: getWebhook
+      summary: Get a webhook
+      description: Returns a subscription and its 10 most recent deliveries.
+      responses:
+        '200':
+          description: The subscription.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Webhook'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Webhooks]
+      operationId: deleteWebhook
+      summary: Delete a webhook
+      responses:
+        '200':
+          description: The subscription was deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, deleted]
+                properties:
+                  id:
+                    type: string
+                    example: wh_8c1f2a9b3d4e5f60
+                  deleted:
+                    type: boolean
+                    const: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/sandbox/players/{playerId}/rounds:
+    post:
+      tags: [Sandbox]
+      operationId: simulateRound
+      summary: Simulate a completed round
+      description: >-
+        Generates a new round for the player, as if their sensors had just synced, and
+        sends a `round.completed` event to every matching webhook. The response returns
+        after delivery attempts finish.
+      parameters:
+        - $ref: '#/components/parameters/PlayerId'
+      responses:
+        '201':
+          description: The simulated round.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [round, event_id, webhooks_notified]
+                properties:
+                  round:
+                    $ref: '#/components/schemas/RoundSummary'
+                  event_id:
+                    type: string
+                    example: evt_51b2c3d4e5f60718
+                  webhooks_notified:
+                    type: integer
+                    description: Number of subscriptions the event was sent to.
+                    example: 1
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+webhooks:
+  roundCompleted:
+    post:
+      tags: [Webhooks]
+      operationId: roundCompletedEvent
+      summary: round.completed
+      description: >-
+        Sent when a player's round finishes syncing. Verify the `Arccos-Signature`
+        header, then fetch the full round with `GET /v1/rounds/{roundId}`.
+      parameters:
+        - name: Arccos-Event
+          in: header
+          required: true
+          schema:
+            type: string
+            example: round.completed
+        - name: Arccos-Signature
+          in: header
+          required: true
+          description: '`t=<unix timestamp>,v1=<hex HMAC-SHA256 of "<t>.<raw body>" using your webhook secret>`'
+          schema:
+            type: string
+            example: t=1793476800,v1=5257a869e7ecebeda32affa62cdca3fa51cad7e77a0e56ff536d0ce8e108d8bd
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoundCompletedEvent'
+      responses:
+        '200':
+          description: Return any 2xx status to acknowledge the event.
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: 'Your API key. The demo server accepts `sk_test_demo_123` by default.'
+  parameters:
+    PlayerId:
+      name: playerId
+      in: path
+      required: true
+      description: The player ID.
+      schema:
+        type: string
+        example: plr_alex_rivera
+    Window:
+      name: window
+      in: query
+      description: Which of the player's most recent rounds to include.
+      schema:
+        $ref: '#/components/schemas/Window'
+        default: last_20
+  responses:
+    BadRequest:
+      description: A parameter or the request body is invalid.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: invalid_parameter
+              message: 'cohort must be one of: tour_elite, scratch, hcp_5, hcp_10, hcp_15, hcp_20.'
+              param: cohort
+    Unauthorized:
+      description: The API key is missing or invalid.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: invalid_api_key
+              message: The API key is not valid.
+    NotFound:
+      description: The resource does not exist.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: resource_not_found
+              message: "No player found with id 'plr_unknown'."
+    RateLimited:
+      description: You sent too many requests. Wait for the number of seconds in `Retry-After`.
+      headers:
+        Retry-After:
+          description: Seconds until the rate limit window resets.
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: rate_limited
+              message: Rate limit of 120 requests per minute exceeded.
+  schemas:
+    Window:
+      type: string
+      enum: [last_5, last_10, last_20, all]
+      description: '`last_5`, `last_10`, and `last_20` use the most recent rounds. `all` uses every round.'
+    CohortId:
+      type: string
+      enum: [tour_elite, scratch, hcp_5, hcp_10, hcp_15, hcp_20]
+    EventType:
+      type: string
+      enum: [round.completed]
+    CourseRef:
+      type: object
+      required: [id, name, par]
+      properties:
+        id:
+          type: string
+          example: crs_harbor_point
+        name:
+          type: string
+          example: Harbor Point Links
+        par:
+          type: integer
+          example: 72
+    Player:
+      type: object
+      required: [id, display_name, handicap_index, home_course, member_since, rounds_tracked]
+      properties:
+        id:
+          type: string
+          example: plr_alex_rivera
+        display_name:
+          type: string
+          example: Alex Rivera
+        handicap_index:
+          type: number
+          description: The player's handicap index. Negative values are plus handicaps.
+          example: 11.8
+        home_course:
+          $ref: '#/components/schemas/CourseRef'
+        member_since:
+          type: string
+          format: date
+          example: '2023-04-02'
+        rounds_tracked:
+          type: integer
+          example: 24
+    StrokesGained:
+      type: object
+      description: >-
+        Strokes gained per round by category. Positive values beat the baseline; `total`
+        is the sum of the four categories.
+      required: [off_the_tee, approach, around_the_green, putting, total]
+      properties:
+        off_the_tee:
+          type: number
+          example: -2.32
+        approach:
+          type: number
+          example: -4.62
+        around_the_green:
+          type: number
+          example: -1.95
+        putting:
+          type: number
+          example: -1.62
+        total:
+          type: number
+          example: -10.5
+    RoundSummary:
+      type: object
+      required: [id, player_id, course, played_at, score, to_par, driving_distance_yds, strokes_gained]
+      properties:
+        id:
+          type: string
+          example: rnd_alex_rivera_024
+        player_id:
+          type: string
+          example: plr_alex_rivera
+        course:
+          $ref: '#/components/schemas/CourseRef'
+        played_at:
+          type: string
+          format: date-time
+          example: '2026-10-25T00:00:00.000Z'
+        score:
+          type: integer
+          example: 84
+        to_par:
+          type: integer
+          example: 12
+        driving_distance_yds:
+          type: integer
+          description: Average driving distance for the round, in yards.
+          example: 236
+        strokes_gained:
+          allOf:
+            - $ref: '#/components/schemas/StrokesGained'
+          description: Strokes gained against the scratch cohort.
+    Hole:
+      type: object
+      required: [number, par, score, putts, fairway_hit, gir, sand_shot]
+      properties:
+        number:
+          type: integer
+          minimum: 1
+          maximum: 18
+          example: 1
+        par:
+          type: integer
+          example: 5
+        score:
+          type: integer
+          example: 6
+        putts:
+          type: integer
+          example: 2
+        fairway_hit:
+          type: [boolean, 'null']
+          description: '`null` on par 3s.'
+          example: true
+        gir:
+          type: boolean
+          description: Whether the player hit the green in regulation.
+          example: false
+        sand_shot:
+          type: boolean
+          description: Whether the player played from a greenside bunker.
+          example: false
+    Round:
+      allOf:
+        - $ref: '#/components/schemas/RoundSummary'
+        - type: object
+          required: [holes]
+          properties:
+            holes:
+              type: array
+              minItems: 18
+              maxItems: 18
+              items:
+                $ref: '#/components/schemas/Hole'
+    Stats:
+      type: object
+      required: [scoring_average, driving_distance_yds, fairways_hit_pct, gir_pct, scrambling_pct, putts_per_round, three_putt_pct, sand_save_pct]
+      properties:
+        scoring_average:
+          type: number
+          description: Average score, normalized to a par-72 course.
+          example: 84.2
+        driving_distance_yds:
+          type: integer
+          example: 233
+        fairways_hit_pct:
+          type: number
+          description: Percentage of par 4 and par 5 tee shots that finished in the fairway.
+          example: 37.9
+        gir_pct:
+          type: number
+          description: Percentage of holes where the player reached the green in regulation.
+          example: 32.2
+        scrambling_pct:
+          type: number
+          description: Percentage of missed greens where the player still made par or better.
+          example: 29.5
+        putts_per_round:
+          type: number
+          example: 33.9
+        three_putt_pct:
+          type: number
+          description: Percentage of holes with three or more putts.
+          example: 15
+        sand_save_pct:
+          type: number
+          description: Percentage of greenside bunker holes where the player made par or better.
+          example: 23.8
+    Cohort:
+      type: object
+      required: [id, name, description, handicap_range, sample_size, stats, strokes_gained]
+      properties:
+        id:
+          $ref: '#/components/schemas/CohortId'
+        name:
+          type: string
+          example: Tour elite
+        description:
+          type: string
+          example: Arccos golfers with a handicap index of +2 or better. The closest proxy for tour-level play.
+        handicap_range:
+          type: object
+          required: [min, max]
+          properties:
+            min:
+              type: number
+              example: -8
+            max:
+              type: number
+              example: -2
+        sample_size:
+          type: integer
+          description: Number of golfers in the cohort.
+          example: 3870
+        stats:
+          $ref: '#/components/schemas/Stats'
+        strokes_gained:
+          allOf:
+            - $ref: '#/components/schemas/StrokesGained'
+          description: The cohort's average strokes gained against the scratch cohort.
+    MetricComparison:
+      type: object
+      required: [metric, label, unit, higher_is_better, player_value, cohort_value, gap, outperforming, cohort_percentile]
+      properties:
+        metric:
+          type: string
+          description: A key from the `Stats` object.
+          example: gir_pct
+        label:
+          type: string
+          example: Greens in regulation
+        unit:
+          type: string
+          enum: [strokes, yards, percent, putts]
+          example: percent
+        higher_is_better:
+          type: boolean
+          example: true
+        player_value:
+          type: number
+          example: 32.2
+        cohort_value:
+          type: number
+          example: 64.5
+        gap:
+          type: number
+          description: '`player_value` minus `cohort_value`.'
+          example: -32.3
+        outperforming:
+          type: boolean
+          description: Whether the player beats the cohort on this stat, taking `higher_is_better` into account.
+          example: false
+        cohort_percentile:
+          type: integer
+          minimum: 1
+          maximum: 99
+          description: Estimated percentile the player's value would rank at within the cohort.
+          example: 1
+    Comparison:
+      type: object
+      required: [window, player_id, cohort, rounds_included, strokes_gained, metrics, biggest_opportunity, insights]
+      properties:
+        window:
+          $ref: '#/components/schemas/Window'
+        player_id:
+          type: string
+          example: plr_alex_rivera
+        cohort:
+          type: object
+          required: [id, name]
+          properties:
+            id:
+              $ref: '#/components/schemas/CohortId'
+            name:
+              type: string
+              example: Tour elite
+        rounds_included:
+          type: integer
+          example: 20
+        strokes_gained:
+          type: object
+          required: [total, by_category]
+          properties:
+            total:
+              type: number
+              description: Strokes per round gained (positive) or lost (negative) against the cohort.
+              example: -12.35
+            by_category:
+              type: array
+              description: Sorted from the biggest loss to the biggest gain.
+              items:
+                type: object
+                required: [category, label, strokes_per_round]
+                properties:
+                  category:
+                    type: string
+                    enum: [off_the_tee, approach, around_the_green, putting]
+                    example: approach
+                  label:
+                    type: string
+                    example: Approach
+                  strokes_per_round:
+                    type: number
+                    example: -5.56
+        metrics:
+          type: array
+          items:
+            $ref: '#/components/schemas/MetricComparison'
+        biggest_opportunity:
+          type: [string, 'null']
+          enum: [off_the_tee, approach, around_the_green, putting, null]
+          description: The category losing the most strokes. `null` if the player beats the cohort everywhere.
+          example: approach
+        insights:
+          type: array
+          description: Plain-language summaries you can show to the player.
+          items:
+            type: string
+          example:
+            - "You're 12.3 strokes per round behind the Tour elite cohort."
+            - Approach is your biggest gap at 5.6 strokes per round (45% of the total).
+    ClubDistance:
+      type: object
+      required: [club, label, avg_carry_yds]
+      properties:
+        club:
+          type: string
+          enum: [driver, 3_wood, 4_hybrid, 5_iron, 6_iron, 7_iron, 8_iron, 9_iron, pw, gw, sw, lw]
+          example: 7_iron
+        label:
+          type: string
+          example: 7 iron
+        avg_carry_yds:
+          type: integer
+          example: 153
+        cohort_avg_carry_yds:
+          type: integer
+          description: Only present when you pass `cohort`.
+          example: 186
+        gap_yds:
+          type: integer
+          description: Only present when you pass `cohort`.
+          example: -33
+    Delivery:
+      type: object
+      required: [event_id, type, status, error, delivered_at]
+      properties:
+        event_id:
+          type: string
+          example: evt_51b2c3d4e5f60718
+        type:
+          $ref: '#/components/schemas/EventType'
+        status:
+          type: [integer, 'null']
+          description: HTTP status your endpoint returned. `null` if the request failed.
+          example: 200
+        error:
+          type: [string, 'null']
+          description: Why the delivery failed, such as a timeout.
+          example: null
+        delivered_at:
+          type: string
+          format: date-time
+    Webhook:
+      type: object
+      required: [id, url, events, created_at, recent_deliveries]
+      properties:
+        id:
+          type: string
+          example: wh_8c1f2a9b3d4e5f60
+        url:
+          type: string
+          format: uri
+          example: https://example.com/webhooks/arccos
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/EventType'
+        created_at:
+          type: string
+          format: date-time
+        recent_deliveries:
+          type: array
+          description: Up to 10 of the latest deliveries, newest first.
+          items:
+            $ref: '#/components/schemas/Delivery'
+    RoundCompletedEvent:
+      type: object
+      required: [id, type, created_at, data]
+      properties:
+        id:
+          type: string
+          example: evt_51b2c3d4e5f60718
+        type:
+          type: string
+          const: round.completed
+        created_at:
+          type: string
+          format: date-time
+        data:
+          type: object
+          required: [round_id, player_id, score, to_par, course, played_at]
+          properties:
+            round_id:
+              type: string
+              example: rnd_sam_okafor_025
+            player_id:
+              type: string
+              example: plr_sam_okafor
+            score:
+              type: integer
+              example: 77
+            to_par:
+              type: integer
+              example: 5
+            course:
+              $ref: '#/components/schemas/CourseRef'
+            played_at:
+              type: string
+              format: date-time
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: A stable, machine-readable code. See the errors guide for every value.
+              example: invalid_parameter
+            message:
+              type: string
+              description: A human-readable explanation. Don't parse it; it can change.
+            param:
+              type: string
+              description: The parameter that caused the error, when there is one.
+              example: cohort

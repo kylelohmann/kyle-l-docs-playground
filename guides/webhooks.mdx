@@ -1,0 +1,122 @@
+---
+title: "Webhooks"
+description: "Get notified when a golfer's round syncs, and verify that events came from the API."
+icon: "webhook"
+---
+
+Webhooks tell your app when something happens, so you don't need to poll. The API sends one event type:
+
+| Event | Sent when |
+| --- | --- |
+| `round.completed` | A player's round finishes syncing |
+
+## Set up a webhook
+
+The repository includes a receiver, `app/examples/webhook-receiver.js`, that verifies signatures and logs each event. It listens on port 4001.
+
+<Steps>
+  <Step title="Create the subscription">
+    ```bash
+    curl -X POST http://localhost:4000/v1/webhooks \
+      -H "Authorization: Bearer sk_test_demo_123" \
+      -H "Content-Type: application/json" \
+      -d '{"url": "http://localhost:4001/webhooks", "events": ["round.completed"]}'
+    ```
+
+    The response includes a `secret` that starts with `whsec_`. The API returns it only once, so store it securely.
+  </Step>
+  <Step title="Run the receiver with the secret">
+    In a second terminal:
+
+    ```bash
+    cd app
+    WEBHOOK_SECRET=whsec_your_secret node examples/webhook-receiver.js
+    ```
+  </Step>
+  <Step title="Trigger an event">
+    The sandbox endpoint simulates a player finishing a round:
+
+    ```bash
+    curl -X POST http://localhost:4000/v1/sandbox/players/plr_sam_okafor/rounds \
+      -H "Authorization: Bearer sk_test_demo_123"
+    ```
+
+    The receiver prints the event. To check delivery from the API side, call [Get a webhook](/api-reference/webhooks/get-a-webhook) and look at `recent_deliveries`.
+  </Step>
+</Steps>
+
+## Event payload
+
+```json
+{
+  "id": "evt_51b2c3d4e5f60718",
+  "type": "round.completed",
+  "created_at": "2026-10-30T18:02:11.204Z",
+  "data": {
+    "round_id": "rnd_sam_okafor_025",
+    "player_id": "plr_sam_okafor",
+    "score": 77,
+    "to_par": 5,
+    "course": { "id": "crs_harbor_point", "name": "Harbor Point Links", "par": 72 },
+    "played_at": "2026-10-30T18:02:11.198Z"
+  }
+}
+```
+
+The payload is a summary. Call [Get a round](/api-reference/rounds/get-a-round) with `data.round_id` for hole-by-hole detail.
+
+## Verify signatures
+
+Every request includes an `Arccos-Signature` header:
+
+```text
+Arccos-Signature: t=1793476800,v1=5257a869e7ecebeda32affa62cdca3fa51cad7e77a0e56ff536d0ce8e108d8bd
+```
+
+`v1` is a hex-encoded HMAC-SHA256 of `<t>.<raw request body>`, signed with your webhook secret. To verify a request:
+
+1. Split the header into `t` and `v1`.
+2. Reject the request if `t` is more than five minutes from the current time. This stops replayed requests.
+3. Compute the HMAC over the **raw** body. Re-serialized JSON can differ by a byte and fail the check.
+4. Compare your result with `v1` using a constant-time comparison.
+
+<CodeGroup>
+```javascript Node.js
+import crypto from 'node:crypto';
+
+export function verifySignature(rawBody, header, secret, toleranceSeconds = 300) {
+  const parts = Object.fromEntries(header.split(',').map((p) => p.split('=')));
+  if (!parts.t || !parts.v1) return false;
+  if (Math.abs(Date.now() / 1000 - Number(parts.t)) > toleranceSeconds) return false;
+  const expected = crypto.createHmac('sha256', secret).update(`${parts.t}.${rawBody}`).digest('hex');
+  return expected.length === parts.v1.length
+    && crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(parts.v1));
+}
+```
+
+```python Python
+import hashlib
+import hmac
+import time
+
+def verify_signature(raw_body: bytes, header: str, secret: str, tolerance_seconds: int = 300) -> bool:
+    parts = dict(p.split("=", 1) for p in header.split(","))
+    if "t" not in parts or "v1" not in parts:
+        return False
+    if abs(time.time() - int(parts["t"])) > tolerance_seconds:
+        return False
+    signed = parts["t"].encode() + b"." + raw_body
+    expected = hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, parts["v1"])
+```
+</CodeGroup>
+
+## Respond quickly
+
+Return a `2xx` status within five seconds, or the delivery counts as failed. Do slow work, like fetching the full round or recomputing comparisons, after you respond, for example on a job queue.
+
+Once you add retries, the same event can arrive more than once. Store each event `id` you process and skip duplicates.
+
+<Note>
+  The demo server tries each delivery once and keeps subscriptions in memory, so they disappear when the server restarts. See [Production checklist](/build/production) for retries and persistence.
+</Note>

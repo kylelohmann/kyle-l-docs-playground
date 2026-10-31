@@ -1,0 +1,43 @@
+---
+title: "API reference"
+description: "Base URL, authentication, and conventions for every endpoint."
+---
+
+## Base URL
+
+```text
+http://localhost:4000
+```
+
+Start the demo server with `npm start` in the `app` folder. The playground on each endpoint page sends requests straight to that URL from your browser.
+
+## Authentication
+
+Send your API key as a bearer token. The demo server accepts `sk_test_demo_123`.
+
+```bash
+curl http://localhost:4000/v1/benchmarks \
+  -H "Authorization: Bearer sk_test_demo_123"
+```
+
+See [Authentication](/guides/authentication) for details.
+
+## Conventions
+
+- Requests and responses use JSON.
+- IDs have a prefix that shows their type: `plr_` for players, `rnd_` for rounds, `wh_` for webhooks, and `evt_` for events.
+- Timestamps are ISO 8601 in UTC.
+- Distances are in yards. Percentages run from 0 to 100.
+- Strokes gained values are per round. Positive values beat the baseline.
+- Errors share one format. See [Errors and limits](/guides/errors).
+
+## Endpoints
+
+| Group | Endpoints |
+| --- | --- |
+| Players | List and get connected players |
+| Rounds | List rounds and get hole-by-hole detail |
+| Performance | Stats, strokes gained, cohort comparison, club distances |
+| Benchmarks | Cohort reference stats |
+| Webhooks | Manage subscriptions; the `round.completed` event |
+| Sandbox | Simulate a round to test webhooks |

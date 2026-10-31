@@ -1,47 +1,99 @@
 ---
 title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+description: "Run the Benchmarks API locally and compare a golfer with tour-level players."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
-
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
+In this guide, you start the demo API, make an authenticated request, and compare a player with the **Tour elite** cohort.
 
 ## Prerequisites
 
-Before you begin, you must have:
+- Node.js 20 or later
+- A clone of this repository
 
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
+The demo app has no dependencies, so you don't need to run `npm install`.
 
-## Get started
+## Make your first comparison
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
+  <Step title="Start the API">
+    From the repository root, run:
 
     ```bash
-    npm install your-package
+    cd app
+    npm start
     ```
+
+    The server listens on `http://localhost:4000`. To use another port, set `PORT`, for example `PORT=5000 npm start`.
   </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
+  <Step title="List your players">
+    Every request needs an API key in the `Authorization` header. The demo server accepts `sk_test_demo_123`.
 
     ```bash
-    your-cli init
+    curl http://localhost:4000/v1/players \
+      -H "Authorization: Bearer sk_test_demo_123"
     ```
+
+    The response lists three sample players:
+
+    | ID | Handicap index |
+    | --- | --- |
+    | `plr_sam_okafor` | 3.6 |
+    | `plr_alex_rivera` | 11.8 |
+    | `plr_jordan_lee` | 19.4 |
   </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
+  <Step title="Compare a player with tour-level golfers">
+    ```bash
+    curl "http://localhost:4000/v1/players/plr_alex_rivera/compare?cohort=tour_elite" \
+      -H "Authorization: Bearer sk_test_demo_123"
+    ```
+
+    The response shows where Alex loses strokes, along with insights you can show to the player:
+
+    ```json
+    {
+      "cohort": { "id": "tour_elite", "name": "Tour elite" },
+      "rounds_included": 20,
+      "strokes_gained": {
+        "total": -12.35,
+        "by_category": [
+          { "category": "approach", "label": "Approach", "strokes_per_round": -5.56 },
+          { "category": "off_the_tee", "label": "Off the tee", "strokes_per_round": -3.02 },
+          { "category": "around_the_green", "label": "Around the green", "strokes_per_round": -2.06 },
+          { "category": "putting", "label": "Putting", "strokes_per_round": -1.71 }
+        ]
+      },
+      "biggest_opportunity": "approach",
+      "insights": [
+        "You're 12.3 strokes per round behind the Tour elite cohort.",
+        "Approach is your biggest gap at 5.6 strokes per round (45% of the total)."
+      ]
+    }
+    ```
+
+    The full response also includes a `metrics` array with each stat, the gap, and a cohort percentile.
+  </Step>
+  <Step title="Run the example script">
+    The repository includes a script that prints the comparison as a table:
 
     ```bash
-    your-cli start
+    node examples/compare.js plr_alex_rivera tour_elite
     ```
+
+    Try `hcp_10` instead of `tour_elite` to see how Alex compares with golfers at a similar level.
   </Step>
 </Steps>
 
 <Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
-
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
+  With the server running, you can also send requests from any endpoint page in the [API reference](/api-reference/introduction). Enter `sk_test_demo_123` as the bearer token.
 </Tip>
+
+## Next steps
+
+<Columns cols={2}>
+  <Card title="Core concepts" icon="lightbulb" href="/concepts">
+    Learn how cohorts and strokes gained work.
+  </Card>
+  <Card title="Compare with tour players" icon="trophy" href="/guides/compare-to-tour">
+    Turn the comparison into a feature in your app.
+  </Card>
+</Columns>

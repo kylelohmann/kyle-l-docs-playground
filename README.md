@@ -1,16 +1,12 @@
-# Mintlify Starter Kit
+# Arccos Benchmarks API docs
 
-Use the starter kit to get your docs deployed and ready to customize.
+Documentation and a demo API for comparing a golfer's Arccos stats with benchmark cohorts, from tour-level players to 20 handicaps.
 
-Click the green **Use this template** button at the top of this repo to copy the Mintlify starter kit. The starter kit contains examples with
+- `app/`: the demo API (Node.js, no dependencies). Run `npm start` inside it.
+- `openapi.yaml`: the API contract that generates the API reference.
+- `*.mdx`, `guides/`, `build/`: documentation pages.
 
-- Guide pages
-- Navigation
-- Customizations
-- API reference pages
-- Use of popular components
-
-**[Follow the full quickstart guide](https://starter.mintlify.com/quickstart)**
+The API serves generated sample data and is not an official Arccos API.
 
 ## AI-assisted writing
 

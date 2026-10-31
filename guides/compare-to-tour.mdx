@@ -1,0 +1,201 @@
+---
+title: "Compare a golfer with tour players"
+description: "Build a screen that shows where a golfer loses strokes against tour-level players and realistic next-step cohorts."
+icon: "trophy"
+---
+
+This guide builds the headline feature: a screen that tells a golfer how their game compares with better players, and what to work on first.
+
+You'll use three endpoints:
+
+- [List benchmark cohorts](/api-reference/benchmarks/list-benchmark-cohorts) to offer cohort choices.
+- [Compare a player with a cohort](/api-reference/performance/compare-a-player-with-a-cohort) for the comparison.
+- [Get club distances](/api-reference/performance/get-club-distances) for an optional distance breakdown.
+
+## Choose which cohorts to show
+
+Comparing a 20 handicap only with tour players is discouraging, and it doesn't help them choose what to practice. Show two comparisons instead:
+
+1. **Tour elite**: the aspirational benchmark.
+2. **The next cohort up**: a realistic goal. For a player with a 11.8 index, that's `hcp_5`.
+
+This helper picks the next cohort up from the player's handicap index:
+
+<CodeGroup>
+```javascript JavaScript
+const COHORT_LADDER = [
+  { id: 'hcp_20', min: 17.5 },
+  { id: 'hcp_15', min: 12.5 },
+  { id: 'hcp_10', min: 7.5 },
+  { id: 'hcp_5', min: 2 },
+  { id: 'scratch', min: -1.9 },
+  { id: 'tour_elite', min: -Infinity },
+];
+
+function nextCohortUp(handicapIndex) {
+  const current = COHORT_LADDER.findIndex((c) => handicapIndex >= c.min);
+  return COHORT_LADDER[Math.min(current + 1, COHORT_LADDER.length - 1)].id;
+}
+```
+
+```python Python
+COHORT_LADDER = [
+    ("hcp_20", 17.5),
+    ("hcp_15", 12.5),
+    ("hcp_10", 7.5),
+    ("hcp_5", 2),
+    ("scratch", -1.9),
+    ("tour_elite", float("-inf")),
+]
+
+def next_cohort_up(handicap_index: float) -> str:
+    current = next(i for i, (_, low) in enumerate(COHORT_LADDER) if handicap_index >= low)
+    return COHORT_LADDER[min(current + 1, len(COHORT_LADDER) - 1)][0]
+```
+</CodeGroup>
+
+<Tip>
+  Load the cohort list from [`GET /v1/benchmarks`](/api-reference/benchmarks/list-benchmark-cohorts) when you build a cohort picker, so new cohorts appear without an app release.
+</Tip>
+
+## Fetch both comparisons
+
+Request the two comparisons in parallel:
+
+<CodeGroup>
+```javascript JavaScript
+const BASE_URL = 'http://localhost:4000';
+const headers = { Authorization: `Bearer ${process.env.ARCCOS_API_KEY}` };
+
+async function getJson(path) {
+  const res = await fetch(BASE_URL + path, { headers });
+  const body = await res.json();
+  if (!res.ok) throw new Error(`${body.error.code}: ${body.error.message}`);
+  return body;
+}
+
+async function loadBenchmarks(playerId) {
+  const player = await getJson(`/v1/players/${playerId}`);
+  const goal = nextCohortUp(player.handicap_index);
+  const [tour, nextStep] = await Promise.all([
+    getJson(`/v1/players/${playerId}/compare?cohort=tour_elite&window=last_20`),
+    getJson(`/v1/players/${playerId}/compare?cohort=${goal}&window=last_20`),
+  ]);
+  return { player, tour, nextStep };
+}
+```
+
+```python Python
+import os
+from concurrent.futures import ThreadPoolExecutor
+
+import requests
+
+BASE_URL = "http://localhost:4000"
+HEADERS = {"Authorization": f"Bearer {os.environ['ARCCOS_API_KEY']}"}
+
+def get_json(path: str) -> dict:
+    res = requests.get(BASE_URL + path, headers=HEADERS, timeout=10)
+    body = res.json()
+    if not res.ok:
+        raise RuntimeError(f"{body['error']['code']}: {body['error']['message']}")
+    return body
+
+def load_benchmarks(player_id: str) -> dict:
+    player = get_json(f"/v1/players/{player_id}")
+    goal = next_cohort_up(player["handicap_index"])
+    with ThreadPoolExecutor() as pool:
+        tour = pool.submit(get_json, f"/v1/players/{player_id}/compare?cohort=tour_elite&window=last_20")
+        next_step = pool.submit(get_json, f"/v1/players/{player_id}/compare?cohort={goal}&window=last_20")
+        return {"player": player, "tour": tour.result(), "next_step": next_step.result()}
+```
+
+```bash cURL
+curl "http://localhost:4000/v1/players/plr_alex_rivera/compare?cohort=hcp_5&window=last_20" \
+  -H "Authorization: Bearer $ARCCOS_API_KEY"
+```
+</CodeGroup>
+
+## Render the comparison
+
+Each comparison response has three parts. Each one maps to a section of your screen.
+
+### Headline: strokes gained
+
+`strokes_gained.total` is the single most useful number. It's how many strokes per round the player is behind (negative) or ahead of (positive) the cohort.
+
+`strokes_gained.by_category` is sorted from the biggest loss to the biggest gain. A diverging bar chart centered on zero works well. Bars left of center are strokes lost and bars right of center are strokes gained.
+
+```javascript
+function strokesGainedBars(comparison) {
+  return comparison.strokes_gained.by_category.map((c) => ({
+    label: c.label,
+    value: c.strokes_per_round,
+    tone: c.strokes_per_round < 0 ? 'loss' : 'gain',
+  }));
+}
+```
+
+### What to work on: `biggest_opportunity` and `insights`
+
+`biggest_opportunity` names the category that costs the player the most strokes. It's `null` if the player beats the cohort everywhere. Use it to link to drills or lessons for that category.
+
+`insights` contains short sentences you can show as they are:
+
+```json
+[
+  "You're 12.3 strokes per round behind the Tour elite cohort.",
+  "Approach is your biggest gap at 5.6 strokes per round (45% of the total)."
+]
+```
+
+### Detail: stat-by-stat table
+
+Each item in `metrics` has the player's value, the cohort's value, the `gap`, and a `cohort_percentile`. Use `outperforming` to color each row. It already accounts for stats where lower is better, such as putts.
+
+| Field | Use it for |
+| --- | --- |
+| `label` | Row label |
+| `player_value`, `cohort_value` | The two values to compare |
+| `unit` | Formatting: `percent`, `yards`, `strokes`, or `putts` |
+| `outperforming` | Green or red styling |
+| `cohort_percentile` | "Better than 34% of 5 handicaps" |
+
+<Warning>
+  Don't compute "better or worse" from the sign of `gap`. For `scoring_average`, `putts_per_round`, and `three_putt_pct`, a negative gap is good. Use `outperforming` instead.
+</Warning>
+
+## Add club distances
+
+Distance gaps explain a lot of approach play. A player who hits 7 iron 33 yards shorter than tour players has much longer approach shots. Fetch club distances with the same cohort:
+
+```bash
+curl "http://localhost:4000/v1/players/plr_alex_rivera/clubs?cohort=tour_elite" \
+  -H "Authorization: Bearer $ARCCOS_API_KEY"
+```
+
+```json
+{
+  "player_id": "plr_alex_rivera",
+  "cohort": "tour_elite",
+  "data": [
+    { "club": "driver", "label": "Driver", "avg_carry_yds": 218, "cohort_avg_carry_yds": 266, "gap_yds": -48 },
+    { "club": "7_iron", "label": "7 iron", "avg_carry_yds": 153, "cohort_avg_carry_yds": 186, "gap_yds": -33 }
+  ]
+}
+```
+
+## Keep it fresh
+
+Comparisons change only when a player finishes a round. Cache each response, then refresh it when you receive a [`round.completed` webhook](/guides/webhooks) for that player.
+
+## Related
+
+<Columns cols={2}>
+  <Card title="Track strokes gained over time" icon="chart-line" href="/guides/strokes-gained">
+    Show progress round by round.
+  </Card>
+  <Card title="Core concepts" icon="lightbulb" href="/concepts">
+    How cohorts and percentiles are defined.
+  </Card>
+</Columns>

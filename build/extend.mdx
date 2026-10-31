@@ -1,0 +1,90 @@
+---
+title: "Extend the app"
+description: "Recipes for adding cohorts, stats, and endpoints, and keeping the docs in sync."
+icon: "wrench"
+---
+
+Each recipe lists every file to change. Run `npm test` in `app/` and `mint validate` at the repository root when you finish.
+
+## Add a benchmark cohort
+
+For example, add a `hcp_25` cohort for higher handicaps.
+
+<Steps>
+  <Step title="Define the cohort">
+    Add a `cohort(...)` entry to `COHORTS` in `app/src/data.js`. Keep the list ordered from best to worst. Include all seven stats; the scoring average is derived from the strokes gained values.
+  </Step>
+  <Step title="Update the spec">
+    Add the ID to the `CohortId` enum in `openapi.yaml`.
+  </Step>
+  <Step title="Update the docs">
+    Add a row to the cohort table in `concepts.mdx`. If you changed handicap ranges, update the `COHORT_LADDER` example in `guides/compare-to-tour.mdx`.
+  </Step>
+</Steps>
+
+## Add a stat
+
+For example, add `up_and_down_pct` from inside 50 yards.
+
+<Steps>
+  <Step title="Record the raw data">
+    If the stat needs new hole-level data, add a field in `playHole()` in `app/src/data.js` and include it in the hole object.
+  </Step>
+  <Step title="Aggregate it">
+    Compute the stat in `aggregate()` in `app/src/analytics.js`.
+  </Step>
+  <Step title="Make it comparable">
+    Add an entry to `METRICS` in `app/src/data.js` with `higher_is_better` and a `spread`. Add the cohort value to each cohort's stats.
+  </Step>
+  <Step title="Update the spec and docs">
+    Add the property to the `Stats` schema in `openapi.yaml`, and add a row to the stats table in `concepts.mdx`.
+  </Step>
+</Steps>
+
+<Tip>
+  Choose `spread` so the percentile looks right at the edges. A player at the next cohort's average should land around the 80th to 90th percentile of their own cohort.
+</Tip>
+
+## Add an endpoint
+
+For example, add `GET /v1/players/{playerId}/trends`, which returns stats for each of the last few months.
+
+<Steps>
+  <Step title="Add the route">
+    Add an entry to `routes` in `app/src/server.js`. Reuse `getPlayer()`, `windowParam()`, and `cohortParam()` to validate input, and throw `ApiError` for anything else.
+  </Step>
+  <Step title="Put the logic in analytics.js">
+    Keep handlers thin. Add a function to `app/src/analytics.js` and call it from the route.
+  </Step>
+  <Step title="Test it">
+    Add a test to `app/test/api.test.js` covering a success and a validation error.
+  </Step>
+  <Step title="Describe it in the spec">
+    Add the path to `openapi.yaml` with a `tags` entry, a `summary`, and response schemas. Mintlify generates the reference page from the `summary`, so "Get trends" becomes `/api-reference/performance/get-trends`.
+  </Step>
+  <Step title="Preview">
+    Run `mint dev` at the repository root and check the new page in the **API reference** tab. With the server running, send a request from the playground.
+  </Step>
+</Steps>
+
+## Add a webhook event
+
+<Steps>
+  <Step title="Register the type">
+    Add the event name to `EVENT_TYPES` in `app/src/webhooks.js`.
+  </Step>
+  <Step title="Dispatch it">
+    Call `dispatch('your.event', data)` where the event happens.
+  </Step>
+  <Step title="Document it">
+    Add the value to the `EventType` enum and a new entry under `webhooks` in `openapi.yaml`. Add a row to the events table in `guides/webhooks.mdx`.
+  </Step>
+</Steps>
+
+## Keep the docs accurate
+
+A few habits keep the docs and the app from drifting apart:
+
+- Change `openapi.yaml` in the same commit as the route.
+- Copy response examples from real responses. Run the server and use `curl`.
+- Run `mint broken-links` after renaming an endpoint's `summary`. The generated page URL comes from it.

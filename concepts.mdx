@@ -1,0 +1,88 @@
+---
+title: "Core concepts"
+description: "Players, rounds, stats, strokes gained, benchmark cohorts, and windows."
+---
+
+## Players
+
+A **player** is a golfer who has connected their Arccos account to your app. Each player has a `handicap_index`; negative values are plus handicaps. Player IDs start with `plr_`.
+
+## Rounds
+
+A **round** is 18 holes on one course. Each round has a score, average driving distance, strokes gained, and hole-by-hole detail. That detail covers putts, fairway hit, green in regulation, and whether the player hit from a greenside bunker. Round IDs start with `rnd_`.
+
+[List rounds](/api-reference/rounds/list-rounds) returns summaries without holes. [Get a round](/api-reference/rounds/get-a-round) returns the full detail.
+
+## Stats
+
+**Stats** are averages across a set of rounds. Players and cohorts share the same eight stats, so you can compare them directly:
+
+| Stat | Better when | Description |
+| --- | --- | --- |
+| `scoring_average` | Lower | Average score, normalized to par 72 |
+| `driving_distance_yds` | Higher | Average driving distance in yards |
+| `fairways_hit_pct` | Higher | Tee shots on par 4s and 5s that finish in the fairway |
+| `gir_pct` | Higher | Greens hit in regulation |
+| `scrambling_pct` | Higher | Missed greens where the player still made par or better |
+| `putts_per_round` | Lower | Total putts per round |
+| `three_putt_pct` | Lower | Holes with three or more putts |
+| `sand_save_pct` | Higher | Greenside bunker holes where the player made par or better |
+
+## Strokes gained
+
+**Strokes gained** measures how many strokes a player gains or loses per round against a baseline, split into four categories:
+
+- **Off the tee**: tee shots on par 4s and par 5s
+- **Approach**: shots into the green
+- **Around the green**: chips, pitches, and bunker shots
+- **Putting**: shots on the green
+
+A positive number means the player beat the baseline. `total` is the sum of the four categories.
+
+Strokes gained is more useful than raw stats because it shows *where* strokes are lost. For example, a low fairways percentage may cost little if the player's misses are long and playable.
+
+### Baselines
+
+The API stores strokes gained against the **scratch** cohort. To measure against another cohort, subtract that cohort's strokes gained:
+
+```text
+strokes gained vs cohort = strokes gained vs scratch − cohort's strokes gained vs scratch
+```
+
+The [strokes gained](/api-reference/performance/get-strokes-gained) and [compare](/api-reference/performance/compare-a-player-with-a-cohort) endpoints do this for you.
+
+## Benchmark cohorts
+
+A **cohort** is a group of Arccos golfers at a similar skill level. Each cohort publishes its average stats and strokes gained.
+
+| ID | Name | Handicap index |
+| --- | --- | --- |
+| `tour_elite` | Tour elite | +2 or better |
+| `scratch` | Scratch | +1.9 to 1.9 |
+| `hcp_5` | 5 handicap | 2.0 to 7.4 |
+| `hcp_10` | 10 handicap | 7.5 to 12.4 |
+| `hcp_15` | 15 handicap | 12.5 to 17.4 |
+| `hcp_20` | 20 handicap | 17.5 or higher |
+
+**Tour elite** is the closest proxy for tour-level play. It's built from Arccos golfers with elite handicaps, not from tour event results.
+
+<Note>
+  Cohort numbers in the demo are illustrative sample values. See [Production checklist](/build/production) for how to source real ones.
+</Note>
+
+### Percentiles
+
+For each stat, the compare endpoint returns a `cohort_percentile` from 1 to 99. It estimates where the player's value would rank inside the cohort, so 50 means the cohort's median. The demo assumes each stat is normally distributed around the cohort average, with a fixed spread per stat.
+
+## Windows
+
+Stats endpoints take a `window` parameter that controls which rounds count:
+
+| Value | Rounds included |
+| --- | --- |
+| `last_5` | 5 most recent |
+| `last_10` | 10 most recent |
+| `last_20` | 20 most recent (default) |
+| `all` | Every round |
+
+Short windows show current form. Long windows smooth out one bad round.
