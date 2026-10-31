@@ -1,9 +1,19 @@
 ---
 title: "Introduction"
-description: "Show golfers how their Arccos stats compare with tour-level players and every handicap in between."
+description: "Read a golfer's Arccos rounds, stats, and strokes gained, and show them how their game compares with tour-level players and every handicap in between."
 ---
 
 The Benchmarks API gives your app a golfer's Arccos rounds, stats, and strokes gained. It also compares them with benchmark cohorts, from tour-level players down to 20 handicaps.
+
+A raw stat like "32% greens in regulation" means little to most golfers. The Benchmarks API puts it in context. It tells a golfer how far they are from the players they want to play like, which part of their game costs the most strokes, and how that changes round by round.
+
+## Who it's for
+
+- **App developers** adding performance insights to golf, fitness, or coaching products.
+- **Coaches and academies** tracking students' progress between lessons.
+- **Club fitters and retailers** grounding recommendations in a golfer's real distances.
+
+## What you can build
 
 Use it to build features like:
 
@@ -15,6 +25,19 @@ Use it to build features like:
 <Warning>
   This is a demo. The API runs on your machine from the `app` folder and serves generated sample data for three fictional players. It is not an official Arccos API. Read [Production checklist](/build/production) before you build on real data.
 </Warning>
+
+## What's in the API
+
+| Area | What you get |
+| --- | --- |
+| [Players](/api-reference/players/list-players) | Golfers connected to your app, with handicap index and home course |
+| [Rounds](/api-reference/rounds/list-rounds) | Every round, with score, strokes gained, and hole-by-hole detail |
+| [Stats](/api-reference/performance/get-player-stats) | Scoring, driving, greens in regulation, scrambling, putting, and sand saves over the last 5, 10, or 20 rounds |
+| [Strokes gained](/api-reference/performance/get-strokes-gained) | Strokes gained off the tee, on approach, around the green, and putting, against any cohort |
+| [Comparison](/api-reference/performance/compare-a-player-with-a-cohort) | Gaps, cohort percentiles, the biggest area to improve, and ready-to-show insights |
+| [Club distances](/api-reference/performance/get-club-distances) | Average carry for each club, with optional cohort comparison |
+| [Benchmarks](/api-reference/benchmarks/list-benchmark-cohorts) | Reference stats for six cohorts, from Tour elite to 20 handicap |
+| [Webhooks](/guides/webhooks) | Signed `round.completed` events when a new round syncs |
 
 ## How it works
 
